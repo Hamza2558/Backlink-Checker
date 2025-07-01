@@ -1,56 +1,57 @@
-import streamlit as st
 import requests
-from bs4 import BeautifulSoup
-import pandas as pd
+from datetime import datetime
 
-st.set_page_config(page_title="Backlink Status Checker", layout="wide")
+# Sample backlinks to check
+backlinks = [
+    'https://example.com',
+    'https://producthunt.com',
+    'https://404-example.com',
+    'https://otherlink.com',
+]
 
-st.title("🔗 Backlink Status Checker (Live & 404 Monitor)")
+# Dictionary to map URLs to target keywords
+target_keywords = {
+    'https://example.com': 'Keyword1',
+    'https://producthunt.com': 'Keyword2',
+    'https://otherlink.com': 'Keyword3',
+}
 
-# Input form
-with st.form("backlink_form"):
-    st.write("### Enter your target website and backlink URLs")
-    target_domain = st.text_input("Your website (e.g. getprolinks.com)", "getprolinks.com")
-    backlink_input = st.text_area("Paste backlinks (one URL per line)", height=200)
-    submitted = st.form_submit_button("Check Backlink Status")
+# Store the status change times for removed links
+link_removal_times = {}
 
-if submitted:
-    urls = [url.strip() for url in backlink_input.splitlines() if url.strip()]
-    results = []
+# Function to check backlink status
+def check_backlink_status(url):
+    try:
+        response = requests.get(url)
+        status_code = response.status_code
+        # Only return the status code if it's 404 or 200 (Present)
+        if status_code == 404:
+            return "404 - Not Found"
+        elif status_code == 200:
+            return "Present"
+        else:
+            return "Other"  # You can extend this to handle other status codes if needed
+    except requests.exceptions.RequestException:
+        return "Error"
 
-    progress = st.progress(0)
-    for i, url in enumerate(urls):
-        status = ""
-        contains_link = "N/A"
+# Function to get the target keyword for a URL
+def get_target_keyword(url):
+    return target_keywords.get(url, "Unknown Keyword")  # Default if not found
 
-        try:
-            response = requests.get(url, timeout=10, headers={'User-Agent': 'Mozilla/5.0'})
-            status = response.status_code
+# Function to track when a link was removed
+def track_removal_time(url, status):
+    if status == "404 - Not Found" or status == "Error":
+        if url not in link_removal_times:
+            link_removal_times[url] = datetime.now()
 
-            if status == 200:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                if target_domain.lower() in response.text.lower():
-                    contains_link = "✅ Yes"
-                else:
-                    contains_link = "❌ No"
-            else:
-                contains_link = "❌ Page error"
-        except Exception as e:
-            status = "⚠️ Error"
-            contains_link = str(e)
+# Loop through the backlinks and check the status
+for url in backlinks:
+    status = check_backlink_status(url)
+    keyword = get_target_keyword(url)
+    if status in ["404 - Not Found", "Present"]:
+        print(f"URL: {url} | Status: {status} | Target Keyword: {keyword}")
+        track_removal_time(url, status)
 
-        results.append({
-            "Backlink URL": url,
-            "Status Code": status,
-            "Link Present": contains_link
-        })
-
-        progress.progress((i + 1) / len(urls))
-
-    df = pd.DataFrame(results)
-    st.success("✅ Completed! Here's the backlink status report:")
-
-    st.dataframe(df, use_container_width=True)
-
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Download CSV", data=csv, file_name="backlink_status_report.csv", mime='text/csv')
+# Check and print the time of link removal if the link was removed
+for url, removal_time in link_removal_times.items():
+    print(f"Link {url} was removed on {removal_time}")
